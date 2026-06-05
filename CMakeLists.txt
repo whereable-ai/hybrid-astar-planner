@@ -16,6 +16,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc)
 
 find_package(ompl REQUIRED)
 if(NOT ompl_FOUND)
@@ -85,11 +86,16 @@ endif()
 add_executable(tf_broadcaster src/tf_broadcaster.cpp)
 ament_target_dependencies(tf_broadcaster rclcpp nav_msgs tf2 tf2_ros geometry_msgs)
 
+add_executable(yaml_map_publisher src/yaml_map_publisher.cpp)
+target_link_libraries(yaml_map_publisher ${OpenCV_LIBS})
+target_include_directories(yaml_map_publisher PRIVATE ${OpenCV_INCLUDE_DIRS})
+ament_target_dependencies(yaml_map_publisher rclcpp nav_msgs)
+
 add_executable(hybrid_astar src/main.cpp)
 target_link_libraries(hybrid_astar ${PROJECT_NAME}_lib ompl)
 ament_target_dependencies(hybrid_astar rclcpp)
 
-install(TARGETS ${PROJECT_NAME}_lib tf_broadcaster hybrid_astar
+install(TARGETS ${PROJECT_NAME}_lib tf_broadcaster yaml_map_publisher hybrid_astar
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -100,7 +106,7 @@ install(DIRECTORY include/
   DESTINATION include/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch/ maps/
+install(DIRECTORY launch maps
   DESTINATION share/${PROJECT_NAME}
 )
 

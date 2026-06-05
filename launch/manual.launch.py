@@ -22,21 +22,31 @@ def generate_launch_description():
             output='screen'
         ),
         Node(
-            package='nav2_map_server',
-            executable='map_server',
-            name='map_server',
+            package='hybrid_astar',
+            executable='yaml_map_publisher',
+            name='yaml_map_publisher',
             output='screen',
-            parameters=[{'yaml_filename': map_yaml_file}]
+            parameters=[{
+                'yaml_file': map_yaml_file,
+                'topic': '/map',
+            }]
         ),
-        Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_map_server',
-            output='screen',
-            parameters=[{'use_sim_time': False},
-                        {'autostart': True},
-                        {'node_names': ['map_server']}]
-        ),
+        # Node(
+        #     package='nav2_map_server',
+        #     executable='map_server',
+        #     name='map_server',
+        #     output='screen',
+        #     parameters=[{'yaml_filename': map_yaml_file}]
+        # ),
+        # Node(
+        #     package='nav2_lifecycle_manager',
+        #     executable='lifecycle_manager',
+        #     name='lifecycle_manager_map_server',
+        #     output='screen',
+        #     parameters=[{'use_sim_time': False},
+        #                 {'autostart': True},
+        #                 {'node_names': ['map_server']}]
+        # ),
         Node(
             package='rviz2',
             executable='rviz2',
