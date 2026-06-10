@@ -14,6 +14,7 @@
 #include "node3d.h"
 #include "constants.h"
 #include "helper.h"
+#include "grid_transform.h"
 namespace HybridAStar {
 class Path {
  public:
@@ -34,9 +35,10 @@ class Path {
     pubPathNodes = n->create_publisher<visualization_msgs::msg::MarkerArray>(pathNodesTopic, 1);
     pubPathVehicles = n->create_publisher<visualization_msgs::msg::MarkerArray>(pathVehicleTopic, 1);
 
-    path.header.frame_id = "path";
+    path.header.frame_id = "map";
   }
 
+  void setMapOrigin(const geometry_msgs::msg::Pose& origin) { transform.setOrigin(origin); }
   void updatePath(const std::vector<Node3D> &nodePath);
   void addSegment(const Node3D& node);
   void addNode(const Node3D& node, int i);
@@ -55,6 +57,7 @@ class Path {
   nav_msgs::msg::Path path;
   visualization_msgs::msg::MarkerArray pathNodes;
   visualization_msgs::msg::MarkerArray pathVehicles;
+  GridTransform transform;
   bool smoothed = false;
 };
 }

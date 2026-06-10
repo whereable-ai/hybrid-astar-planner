@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include "planner.h"
 
 using namespace HybridAStar;
@@ -59,6 +61,29 @@ TEST_F(PlannerParityTest, SimpleParityCheck) {
   planner_->setGoal(goal_msg);
 
   SUCCEED();
+}
+
+TEST(GridTransformTest, AppliesOriginTranslationAndYaw) {
+  Constants::cellSize = 1.0f;
+
+  geometry_msgs::msg::Pose origin;
+  origin.position.x = 10.0;
+  origin.position.y = -3.0;
+  tf2::Quaternion qOrigin;
+  qOrigin.setRPY(0, 0, 1.5707963267948966);
+  origin.orientation = tf2::toMsg(qOrigin);
+
+  GridTransform transform;
+  transform.setOrigin(origin);
+
+  geometry_msgs::msg::Pose mapPose = transform.toMap(2.0f, 4.0f, 0.25f);
+  EXPECT_NEAR(mapPose.position.x, 6.0, 1e-6);
+  EXPECT_NEAR(mapPose.position.y, -1.0, 1e-6);
+
+  GridPose gridPose = transform.toGrid(mapPose);
+  EXPECT_NEAR(gridPose.x, 2.0, 1e-5);
+  EXPECT_NEAR(gridPose.y, 4.0, 1e-5);
+  EXPECT_NEAR(gridPose.t, 0.25, 1e-5);
 }
 
 int main(int argc, char** argv) {

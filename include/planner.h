@@ -23,6 +23,7 @@
 #include "smoother.h"
 #include "visualize.h"
 #include "lookup.h"
+#include "grid_transform.h"
 
 namespace HybridAStar {
 class Planner {
@@ -38,6 +39,7 @@ class Planner {
 
  private:
   bool transformToMap(const geometry_msgs::msg::PoseStamped& input, geometry_msgs::msg::PoseStamped& output, const char* source);
+  bool isOnGrid(const GridPose& pose) const;
   void updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source);
 
   rclcpp::Node::SharedPtr n;
@@ -58,6 +60,7 @@ class Planner {
   DynamicVoronoi voronoiDiagram;
 
   nav_msgs::msg::OccupancyGrid::SharedPtr grid;
+  GridTransform mapTransform;
   geometry_msgs::msg::PoseWithCovarianceStamped start;
   geometry_msgs::msg::PoseStamped goal;
   bool validStart = false;

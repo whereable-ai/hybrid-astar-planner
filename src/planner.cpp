@@ -48,6 +48,10 @@ void Planner::setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
   }
 
   grid = map;
+  mapTransform.setOrigin(map->info.origin);
+  path.setMapOrigin(map->info.origin);
+  smoothedPath.setMapOrigin(map->info.origin);
+  visualization.setMapOrigin(map->info.origin);
   configurationSpace.updateGrid(map);
 
   int height = map->info.height;
@@ -75,17 +79,14 @@ void Planner::setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
   if (!Constants::manual && tfBuffer->canTransform("map", "base_link", tf2::TimePointZero)) {
     try {
       transform = tfBuffer->lookupTransform("map", "base_link", tf2::TimePointZero);
-      start.pose.pose.position.x = transform.transform.translation.x;
-      start.pose.pose.position.y = transform.transform.translation.y;
-      start.pose.pose.orientation = transform.transform.rotation;
-
-      if (grid->info.height >= start.pose.pose.position.y && start.pose.pose.position.y >= 0 &&
-          grid->info.width >= start.pose.pose.position.x && start.pose.pose.position.x >= 0) {
-        validStart = true;
-      } else  {
-        validStart = false;
-      }
-
+      geometry_msgs::msg::PoseStamped basePose;
+      basePose.header.frame_id = "map";
+      basePose.header.stamp = n->now();
+      basePose.pose.position.x = transform.transform.translation.x;
+      basePose.pose.position.y = transform.transform.translation.y;
+      basePose.pose.position.z = transform.transform.translation.z;
+      basePose.pose.orientation = transform.transform.rotation;
+      updateStartPose(basePose, "base_link");
       plan();
     } catch (const tf2::TransformException & ex) {
       RCLCPP_INFO(n->get_logger(), "Could not transform map to base_link: %s", ex.what());
@@ -133,7 +134,7 @@ bool Planner::transformToMap(
       n->get_logger(),
       *n->get_clock(),
       2000,
-      "Ignoring %s start pose in frame '%s': could not transform to map: %s",
+      "Ignoring %s pose in frame '%s': could not transform to map: %s",
       source,
       input.header.frame_id.c_str(),
       ex.what());
@@ -141,13 +142,15 @@ bool Planner::transformToMap(
   }
 }
 
-void Planner::updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source) {
-  float x = pose.pose.position.x / Constants::cellSize;
-  float y = pose.pose.position.y / Constants::cellSize;
-  tf2::Quaternion q;
-  tf2::fromMsg(pose.pose.orientation, q);
-  float t = tf2::getYaw(q);
+bool Planner::isOnGrid(const GridPose& pose) const {
+  return grid &&
+         pose.x >= 0.0f &&
+         pose.y >= 0.0f &&
+         pose.x < static_cast<float>(grid->info.width) &&
+         pose.y < static_cast<float>(grid->info.height);
+}
 
+void Planner::updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source) {
   start.header = pose.header;
   start.pose.pose = pose.pose;
 
@@ -157,18 +160,25 @@ void Planner::updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const
   startN.pose = pose.pose;
   pubStart->publish(startN);
 
-  if (grid && grid->info.height >= y && y >= 0 && grid->info.width >= x && x >= 0) {
+  const GridPose gridPose = mapTransform.toGrid(pose.pose);
+  if (isOnGrid(gridPose)) {
     validStart = true;
   } else {
     validStart = false;
     if (Constants::coutDEBUG) {
-      std::cout << "invalid " << source << " start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+      std::cout << "invalid " << source << " start x:" << gridPose.x
+                << " y:" << gridPose.y
+                << " t:" << Helper::toDeg(gridPose.t)
+                << std::endl;
     }
     return;
   }
 
   if (source == std::string("initialpose")) {
-    std::cout << "I am seeing a new start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+    std::cout << "I am seeing a new start x:" << gridPose.x
+              << " y:" << gridPose.y
+              << " t:" << Helper::toDeg(gridPose.t)
+              << std::endl;
   }
 }
 
@@ -180,22 +190,34 @@ void Planner::setLocalPose(const geometry_msgs::msg::PoseStamped::SharedPtr loca
 }
 
 void Planner::setGoal(const geometry_msgs::msg::PoseStamped::SharedPtr end) {
-  float x = end->pose.position.x / Constants::cellSize;
-  float y = end->pose.position.y / Constants::cellSize;
-  tf2::Quaternion q;
-  tf2::fromMsg(end->pose.orientation, q);
-  float t = tf2::getYaw(q);
+  geometry_msgs::msg::PoseStamped pose = *end;
+  if (pose.header.frame_id.empty()) {
+    pose.header.frame_id = "map";
+  }
 
-  std::cout << "I am seeing a new goal x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+  geometry_msgs::msg::PoseStamped mapPose;
+  if (!transformToMap(pose, mapPose, "goal")) {
+    return;
+  }
 
-  if (grid && grid->info.height >= y && y >= 0 && grid->info.width >= x && x >= 0) {
+  const GridPose gridPose = mapTransform.toGrid(mapPose.pose);
+  std::cout << "I am seeing a new goal x:" << gridPose.x
+            << " y:" << gridPose.y
+            << " t:" << Helper::toDeg(gridPose.t)
+            << std::endl;
+
+  if (isOnGrid(gridPose)) {
     validGoal = true;
-    goal = *end;
+    goal = mapPose;
 
     if (Constants::manual) { plan();}
 
   } else {
-    std::cout << "invalid goal x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+    validGoal = false;
+    std::cout << "invalid goal x:" << gridPose.x
+              << " y:" << gridPose.y
+              << " t:" << Helper::toDeg(gridPose.t)
+              << std::endl;
   }
 }
 
@@ -213,21 +235,11 @@ void Planner::plan() {
       delete [] nodes2D;
     };
 
-    float x = goal.pose.position.x / Constants::cellSize;
-    float y = goal.pose.position.y / Constants::cellSize;
-    tf2::Quaternion qGoal;
-    tf2::fromMsg(goal.pose.orientation, qGoal);
-    float t = tf2::getYaw(qGoal);
-    t = Helper::normalizeHeadingRad(t);
-    const Node3D nGoal(x, y, t, 0, 0, nullptr);
+    const GridPose goalGridPose = mapTransform.toGrid(goal.pose);
+    const Node3D nGoal(goalGridPose.x, goalGridPose.y, goalGridPose.t, 0, 0, nullptr);
 
-    x = start.pose.pose.position.x / Constants::cellSize;
-    y = start.pose.pose.position.y / Constants::cellSize;
-    tf2::Quaternion qStart;
-    tf2::fromMsg(start.pose.pose.orientation, qStart);
-    t = tf2::getYaw(qStart);
-    t = Helper::normalizeHeadingRad(t);
-    Node3D nStart(x, y, t, 0, 0, nullptr);
+    const GridPose startGridPose = mapTransform.toGrid(start.pose.pose);
+    Node3D nStart(startGridPose.x, startGridPose.y, startGridPose.t, 0, 0, nullptr);
 
     if (!configurationSpace.isTraversable(&nStart)) {
       RCLCPP_WARN(

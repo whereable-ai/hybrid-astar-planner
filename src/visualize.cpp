@@ -1,14 +1,7 @@
 #include "visualize.h"
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <cmath>
 
 using namespace HybridAStar;
-
-geometry_msgs::msg::Quaternion createQuaternionMsgFromYaw(double yaw) {
-  tf2::Quaternion q;
-  q.setRPY(0, 0, yaw);
-  return tf2::toMsg(q);
-}
 
 void Visualize::clear() {
   poses3D.poses.clear();
@@ -17,7 +10,7 @@ void Visualize::clear() {
 
   visualization_msgs::msg::MarkerArray costCubes3D;
   visualization_msgs::msg::Marker costCube3D;
-  costCube3D.header.frame_id = "path";
+  costCube3D.header.frame_id = "map";
   costCube3D.header.stamp = n->now();
   costCube3D.id = 0;
   costCube3D.action = 3;
@@ -26,7 +19,7 @@ void Visualize::clear() {
 
   visualization_msgs::msg::MarkerArray costCubes2D;
   visualization_msgs::msg::Marker costCube2D;
-  costCube2D.header.frame_id = "path";
+  costCube2D.header.frame_id = "map";
   costCube2D.header.stamp = n->now();
   costCube2D.id = 0;
   costCube2D.action = 3;
@@ -36,15 +29,13 @@ void Visualize::clear() {
 
 void Visualize::publishNode3DPose(Node3D& node) {
   geometry_msgs::msg::PoseStamped pose;
-  pose.header.frame_id = "path";
+  pose.header.frame_id = "map";
   pose.header.stamp = n->now();
-  pose.pose.position.x = node.getX() * Constants::cellSize;
-  pose.pose.position.y = node.getY() * Constants::cellSize;
 
   if (node.getPrim() < 3) {
-    pose.pose.orientation = createQuaternionMsgFromYaw(node.getT());
+    pose.pose = transform.toMap(node.getX(), node.getY(), node.getT());
   } else {
-    pose.pose.orientation = createQuaternionMsgFromYaw(node.getT() + M_PI);
+    pose.pose = transform.toMap(node.getX(), node.getY(), node.getT() + M_PI);
   }
 
   pubNode3D->publish(pose);
@@ -52,17 +43,17 @@ void Visualize::publishNode3DPose(Node3D& node) {
 
 void Visualize::publishNode3DPoses(Node3D& node) {
   geometry_msgs::msg::Pose pose;
-  pose.position.x = node.getX() * Constants::cellSize;
-  pose.position.y = node.getY() * Constants::cellSize;
 
   if (node.getPrim() < 3) {
-    pose.orientation = createQuaternionMsgFromYaw(node.getT());
+    pose = transform.toMap(node.getX(), node.getY(), node.getT());
     poses3D.poses.push_back(pose);
+    poses3D.header.frame_id = "map";
     poses3D.header.stamp = n->now();
     pubNodes3D->publish(poses3D);
   } else {
-    pose.orientation = createQuaternionMsgFromYaw(node.getT() + M_PI);
+    pose = transform.toMap(node.getX(), node.getY(), node.getT() + M_PI);
     poses3Dreverse.poses.push_back(pose);
+    poses3Dreverse.header.frame_id = "map";
     poses3Dreverse.header.stamp = n->now();
     pubNodes3Dreverse->publish(poses3Dreverse);
   }
@@ -70,11 +61,9 @@ void Visualize::publishNode3DPoses(Node3D& node) {
 
 void Visualize::publishNode2DPose(Node2D& node) {
   geometry_msgs::msg::PoseStamped pose;
-  pose.header.frame_id = "path";
+  pose.header.frame_id = "map";
   pose.header.stamp = n->now();
-  pose.pose.position.x = (node.getX() + 0.5) * Constants::cellSize;
-  pose.pose.position.y = (node.getY() + 0.5) * Constants::cellSize;
-  pose.pose.orientation = createQuaternionMsgFromYaw(0);
+  pose.pose = transform.toMap(node.getX() + 0.5f, node.getY() + 0.5f, 0);
 
   pubNode2D->publish(pose);
 }
@@ -82,11 +71,10 @@ void Visualize::publishNode2DPose(Node2D& node) {
 void Visualize::publishNode2DPoses(Node2D& node) {
   if (node.isDiscovered()) {
     geometry_msgs::msg::Pose pose;
-    pose.position.x = (node.getX() + 0.5) * Constants::cellSize;
-    pose.position.y = (node.getY() + 0.5) * Constants::cellSize;
-    pose.orientation = createQuaternionMsgFromYaw(0);
+    pose = transform.toMap(node.getX() + 0.5f, node.getY() + 0.5f, 0);
 
     poses2D.poses.push_back(pose);
+    poses2D.header.frame_id = "map";
     poses2D.header.stamp = n->now();
     pubNodes2D->publish(poses2D);
   }
@@ -136,7 +124,7 @@ void Visualize::publishNode3DCosts(Node3D* nodes, int width, int height, int dep
         costCube.action = 0;
       }
 
-      costCube.header.frame_id = "path";
+      costCube.header.frame_id = "map";
       costCube.header.stamp = n->now();
       costCube.id = i;
       costCube.type = visualization_msgs::msg::Marker::CUBE;
@@ -149,8 +137,7 @@ void Visualize::publishNode3DCosts(Node3D* nodes, int width, int height, int dep
       costCube.color.r = red;
       costCube.color.g = green;
       costCube.color.b = blue;
-      costCube.pose.position.x = (i % width + 0.5) * Constants::cellSize;
-      costCube.pose.position.y = ((i / width) % height + 0.5) * Constants::cellSize;
+      costCube.pose = transform.toMap(i % width + 0.5f, (i / width) % height + 0.5f, 0);
       costCubes.markers.push_back(costCube);
     }
   }
@@ -201,7 +188,7 @@ void Visualize::publishNode2DCosts(Node2D* nodes, int width, int height) {
         costCube.action = 0;
       }
 
-      costCube.header.frame_id = "path";
+      costCube.header.frame_id = "map";
       costCube.header.stamp = n->now();
       costCube.id = i;
       costCube.type = visualization_msgs::msg::Marker::CUBE;
@@ -214,8 +201,7 @@ void Visualize::publishNode2DCosts(Node2D* nodes, int width, int height) {
       costCube.color.r = red;
       costCube.color.g = green;
       costCube.color.b = blue;
-      costCube.pose.position.x = (i % width + 0.5) * Constants::cellSize;
-      costCube.pose.position.y = ((i / width) % height + 0.5) * Constants::cellSize;
+      costCube.pose = transform.toMap(i % width + 0.5f, (i / width) % height + 0.5f, 0);
       costCubes.markers.push_back(costCube);
     }
   }

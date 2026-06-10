@@ -1,0 +1,5 @@
+resolution: 0.2
+origin: [-24.4, -52.6, 0.0]
+occupied_thresh: 0.1
+free_thresh: 0.05
+negate: 0

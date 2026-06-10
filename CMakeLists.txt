@@ -50,6 +50,7 @@ set(HEADERS
     include/vector2d.h
     include/visualize.h
     include/helper.h
+    include/grid_transform.h
     include/constants.h
     include/lookup.h
     include/gradient.h

@@ -52,6 +52,43 @@ std::string resolvePath(const std::string& yaml_file, const std::string& image_f
   return directoryName(yaml_file) + "/" + image_file;
 }
 
+bool fileExists(const std::string& path) {
+  std::ifstream file(path);
+  return static_cast<bool>(file);
+}
+
+std::string stripExtension(const std::string& path) {
+  const auto slash = path.find_last_of("/\\");
+  const auto dot = path.find_last_of('.');
+  if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) {
+    return path;
+  }
+  return path.substr(0, dot);
+}
+
+std::string resolveMapStem(const std::string& yaml_file, const std::string& image_name) {
+  return stripExtension(resolvePath(yaml_file, image_name));
+}
+
+std::string resolveImagePath(const std::string& map_stem, const std::string& image_name) {
+  if (stripExtension(image_name) != image_name) {
+    return isAbsolutePath(image_name) ? image_name : map_stem + image_name.substr(stripExtension(image_name).size());
+  }
+
+  const std::vector<std::string> candidates = {
+    map_stem + ".png",
+    map_stem + ".pgm",
+  };
+
+  for (const auto& candidate : candidates) {
+    if (fileExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates.front();
+}
+
 std::unordered_map<std::string, std::string> loadYamlFields(const std::string& yaml_file) {
   std::ifstream file(yaml_file);
   if (!file) {
@@ -79,6 +116,14 @@ std::unordered_map<std::string, std::string> loadYamlFields(const std::string& y
   }
 
   return fields;
+}
+
+void mergeYamlFields(
+    std::unordered_map<std::string, std::string>& base,
+    const std::unordered_map<std::string, std::string>& overrides) {
+  for (const auto& field : overrides) {
+    base[field.first] = field.second;
+  }
 }
 
 std::vector<double> parseOrigin(const std::string& value) {
@@ -114,6 +159,17 @@ std::string getRequired<std::string>(
   return it->second;
 }
 
+std::string getString(
+    const std::unordered_map<std::string, std::string>& fields,
+    const std::string& key,
+    const std::string& fallback) {
+  const auto it = fields.find(key);
+  if (it == fields.end()) {
+    return fallback;
+  }
+  return it->second;
+}
+
 double getDouble(
     const std::unordered_map<std::string, std::string>& fields,
     const std::string& key,
@@ -137,13 +193,21 @@ int getInt(
 }
 
 nav_msgs::msg::OccupancyGrid loadYamlMap(const std::string& yaml_file) {
-  const auto fields = loadYamlFields(yaml_file);
-  const auto image_path = resolvePath(yaml_file, getRequired<std::string>(fields, "image"));
-  const auto resolution = getDouble(fields, "resolution", 1.0);
-  const auto occupied_thresh = getDouble(fields, "occupied_thresh", 0.65);
-  const auto free_thresh = getDouble(fields, "free_thresh", 0.196);
+  auto fields = loadYamlFields(yaml_file);
+  const auto image_name = getRequired<std::string>(fields, "image");
+  const auto map_stem = resolveMapStem(yaml_file, image_name);
+  const auto image_path = resolveImagePath(map_stem, image_name);
+  const auto map_config_path = map_stem + ".yaml";
+
+  if (fileExists(map_config_path) && map_config_path != yaml_file) {
+    mergeYamlFields(fields, loadYamlFields(map_config_path));
+  }
+
+  const auto resolution = getDouble(fields, "resolution", 0.1);
+  const auto occupied_thresh = getDouble(fields, "occupied_thresh", 0.1);
+  const auto free_thresh = getDouble(fields, "free_thresh", 0.05);
   const auto negate = getInt(fields, "negate", 0);
-  const auto origin = parseOrigin(getRequired<std::string>(fields, "origin"));
+  const auto origin = parseOrigin(getString(fields, "origin", "[0.0, 0.0, 0.0]"));
 
   cv::Mat image = cv::imread(image_path, cv::IMREAD_UNCHANGED);
   if (image.empty()) {

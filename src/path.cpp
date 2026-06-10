@@ -1,14 +1,6 @@
 #include "path.h"
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 using namespace HybridAStar;
-
-geometry_msgs::msg::Quaternion createQuaternionMsgFromYawPath(double yaw) {
-  tf2::Quaternion q;
-  q.setRPY(0, 0, yaw);
-  return tf2::toMsg(q);
-}
 
 void Path::clear() {
   Node3D node;
@@ -23,6 +15,7 @@ void Path::clear() {
 }
 
 void Path::updatePath(const std::vector<Node3D>& nodePath) {
+  path.header.frame_id = "map";
   path.header.stamp = n->now();
   int k = 0;
 
@@ -37,13 +30,9 @@ void Path::updatePath(const std::vector<Node3D>& nodePath) {
 
 void Path::addSegment(const Node3D& node) {
   geometry_msgs::msg::PoseStamped vertex;
-  vertex.pose.position.x = node.getX() * Constants::cellSize;
-  vertex.pose.position.y = node.getY() * Constants::cellSize;
-  vertex.pose.position.z = 0;
-  vertex.pose.orientation.x = 0;
-  vertex.pose.orientation.y = 0;
-  vertex.pose.orientation.z = 0;
-  vertex.pose.orientation.w = 0;
+  vertex.header.frame_id = "map";
+  vertex.header.stamp = n->now();
+  vertex.pose = transform.toMap(node.getX(), node.getY(), node.getT());
   path.poses.push_back(vertex);
 }
 
@@ -54,7 +43,7 @@ void Path::addNode(const Node3D& node, int i) {
     pathNode.action = 3;
   }
 
-  pathNode.header.frame_id = "path";
+  pathNode.header.frame_id = "map";
   pathNode.header.stamp = n->now();
   pathNode.id = i;
   pathNode.type = visualization_msgs::msg::Marker::SPHERE;
@@ -73,8 +62,7 @@ void Path::addNode(const Node3D& node, int i) {
     pathNode.color.b = Constants::purple.blue;
   }
 
-  pathNode.pose.position.x = node.getX() * Constants::cellSize;
-  pathNode.pose.position.y = node.getY() * Constants::cellSize;
+  pathNode.pose = transform.toMap(node.getX(), node.getY(), node.getT());
   pathNodes.markers.push_back(pathNode);
 }
 
@@ -85,7 +73,7 @@ void Path::addVehicle(const Node3D& node, int i) {
     pathVehicle.action = 3;
   }
 
-  pathVehicle.header.frame_id = "path";
+  pathVehicle.header.frame_id = "map";
   pathVehicle.header.stamp = n->now();
   pathVehicle.id = i;
   pathVehicle.type = visualization_msgs::msg::Marker::CUBE;
@@ -104,8 +92,6 @@ void Path::addVehicle(const Node3D& node, int i) {
     pathVehicle.color.b = Constants::teal.blue;
   }
 
-  pathVehicle.pose.position.x = node.getX() * Constants::cellSize;
-  pathVehicle.pose.position.y = node.getY() * Constants::cellSize;
-  pathVehicle.pose.orientation = createQuaternionMsgFromYawPath(node.getT());
+  pathVehicle.pose = transform.toMap(node.getX(), node.getY(), node.getT());
   pathVehicles.markers.push_back(pathVehicle);
 }

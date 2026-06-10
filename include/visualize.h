@@ -9,6 +9,7 @@
 #include "gradient.h"
 #include "node3d.h"
 #include "node2d.h"
+#include "grid_transform.h"
 
 namespace HybridAStar {
 class Node3D;
@@ -26,11 +27,12 @@ class Visualize {
     pubNodes2D = n->create_publisher<geometry_msgs::msg::PoseArray>("/visualizeNodes2DPoses", 100);
     pubNodes2DCosts = n->create_publisher<visualization_msgs::msg::MarkerArray>("/visualizeNodes2DCosts", 100);
 
-    poses3D.header.frame_id = "path";
-    poses3Dreverse.header.frame_id = "path";
-    poses2D.header.frame_id = "path";
+    poses3D.header.frame_id = "map";
+    poses3Dreverse.header.frame_id = "map";
+    poses2D.header.frame_id = "map";
   }
 
+  void setMapOrigin(const geometry_msgs::msg::Pose& origin) { transform.setOrigin(origin); }
   void clear();
   void clear2D() {poses2D.poses.clear();}
 
@@ -54,6 +56,7 @@ class Visualize {
   geometry_msgs::msg::PoseArray poses3D;
   geometry_msgs::msg::PoseArray poses3Dreverse;
   geometry_msgs::msg::PoseArray poses2D;
+  GridTransform transform;
 };
 }
 #endif // VISUALIZE_H
