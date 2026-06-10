@@ -8,6 +8,7 @@ endif()
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -24,6 +25,7 @@ if(NOT ompl_FOUND)
 endif()
 
 set(SOURCES
+    src/constants.cpp
     src/algorithm.cpp
     src/node2d.cpp
     src/node3d.cpp
@@ -93,7 +95,7 @@ ament_target_dependencies(yaml_map_publisher rclcpp nav_msgs)
 
 add_executable(hybrid_astar src/main.cpp)
 target_link_libraries(hybrid_astar ${PROJECT_NAME}_lib ompl)
-ament_target_dependencies(hybrid_astar rclcpp)
+ament_target_dependencies(hybrid_astar rclcpp ament_index_cpp)
 
 install(TARGETS ${PROJECT_NAME}_lib tf_broadcaster yaml_map_publisher hybrid_astar
   EXPORT export_${PROJECT_NAME}
@@ -106,7 +108,7 @@ install(DIRECTORY include/
   DESTINATION include/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch maps
+install(DIRECTORY launch maps config
   DESTINATION share/${PROJECT_NAME}
 )
 

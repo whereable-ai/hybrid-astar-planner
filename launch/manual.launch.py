@@ -7,13 +7,17 @@ def generate_launch_description():
     pkg_dir = get_package_share_directory('hybrid_astar')
     rviz_config_dir = os.path.join(pkg_dir, 'launch', 'config.rviz')
     map_yaml_file = os.path.join(pkg_dir, 'maps', 'map.yaml')
+    planner_config_file = os.path.join(pkg_dir, 'config', 'config.yaml')
 
     return LaunchDescription([
         Node(
             package='hybrid_astar',
             executable='hybrid_astar',
             name='hybrid_astar',
-            output='screen'
+            output='screen',
+            parameters=[{
+                'config_file': planner_config_file,
+            }]
         ),
         Node(
             package='hybrid_astar',

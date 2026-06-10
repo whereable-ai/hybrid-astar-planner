@@ -1,6 +1,8 @@
 #ifndef COLLISIONDETECTION_H
 #define COLLISIONDETECTION_H
 
+#include <vector>
+
 #include <nav_msgs/msg/occupancy_grid.hpp>
 
 #include "constants.h"
@@ -25,6 +27,7 @@ inline void getConfiguration(const Node3D* node, float& x, float& y, float& t) {
 class CollisionDetection {
  public:
   CollisionDetection();
+  void initializeLookup();
 
   template<typename T> bool isTraversable(const T* node) const {
     float cost = 0;
@@ -54,7 +57,7 @@ class CollisionDetection {
 
  private:
   nav_msgs::msg::OccupancyGrid::SharedPtr grid;
-  Constants::config collisionLookup[Constants::headings * Constants::positions];
+  std::vector<Constants::config> collisionLookup;
 };
 }
 #endif // COLLISIONDETECTION_H

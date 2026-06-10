@@ -15,8 +15,11 @@ void Smoother::smoothPath(DynamicVoronoi& voronoi_ref) {
   this->voronoi = &voronoi_ref;
   this->width = voronoi->getSizeX();
   this->height = voronoi->getSizeY();
+  kappaMax = Constants::cellSize / (Constants::r * 1.1f);
+  obsDMax = Constants::metersToCells(Constants::minRoadWidth);
+  vorObsDMax = Constants::metersToCells(Constants::minRoadWidth);
   int iterations = 0;
-  int maxIterations = 500;
+  int maxIterations = Constants::smootherIterations;
   int pathLength = 0;
 
   pathLength = path.size();
@@ -136,7 +139,9 @@ Vector2D Smoother::curvatureTerm(Vector2D x_im2, Vector2D x_im1, Vector2D x_i, V
       gradient = wCurvature * (0.25 * kim1 + 0.5 * ki + 0.25 * kip1);
 
       if (std::isnan(gradient.getX()) || std::isnan(gradient.getY())) {
-        std::cout << "nan values in curvature term" << std::endl;
+        if (Constants::coutDEBUG) {
+          std::cout << "nan values in curvature term" << std::endl;
+        }
         Vector2D zeros;
         return zeros;
       }
@@ -146,7 +151,9 @@ Vector2D Smoother::curvatureTerm(Vector2D x_im2, Vector2D x_im1, Vector2D x_i, V
     }
   }
   else {
-    std::cout << "abs values not larger than 0" << std::endl;
+    if (Constants::coutDEBUG) {
+      std::cout << "abs values not larger than 0" << std::endl;
+    }
     Vector2D zeros;
     return zeros;
   }

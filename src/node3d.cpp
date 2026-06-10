@@ -1,29 +1,10 @@
 #include "node3d.h"
-#include <random>
 
 using namespace HybridAStar;
 
 // CONSTANT VALUES
 // possible directions
 const int Node3D::dir = 3;
-// possible movements
-//const float Node3D::dy[] = { 0,        -0.032869,  0.032869};
-//const float Node3D::dx[] = { 0.62832,   0.62717,   0.62717};
-//const float Node3D::dt[] = { 0,         0.10472,   -0.10472};
-
-// R = 6, 6.75 DEG
-const float Node3D::dy[] = { 0,        -0.0415893,  0.0415893};
-const float Node3D::dx[] = { 0.7068582,   0.705224,   0.705224};
-const float Node3D::dt[] = { 0,         0.1178097,   -0.1178097};
-
-// R = 3, 6.75 DEG
-//const float Node3D::dy[] = { 0,        -0.0207946, 0.0207946};
-//const float Node3D::dx[] = { 0.35342917352,   0.352612,  0.352612};
-//const float Node3D::dt[] = { 0,         0.11780972451,   -0.11780972451};
-
-//const float Node3D::dy[] = { 0,       -0.16578, 0.16578};
-//const float Node3D::dx[] = { 1.41372, 1.40067, 1.40067};
-//const float Node3D::dt[] = { 0,       0.2356194,   -0.2356194};
 
 //###################################################
 //                                         IS ON GRID
@@ -37,13 +18,11 @@ bool Node3D::isOnGrid(const int width, const int height) const {
 //                                        IS IN RANGE
 //###################################################
 bool Node3D::isInRange(const Node3D& goal) const {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  std::uniform_int_distribution<int> distribution(1, 10);
-  int random = distribution(gen);
-  float dx = std::abs(x - goal.x) / random;
-  float dy = std::abs(y - goal.y) / random;
-  return (dx * dx) + (dy * dy) < Constants::dubinsShotDistance;
+  const float dx = x - goal.x;
+  const float dy = y - goal.y;
+  const float dubinsShotDistance = Constants::dubinsShotDistanceCells();
+  return (dx * dx) + (dy * dy) <
+         dubinsShotDistance * dubinsShotDistance;
 }
 
 //###################################################
@@ -53,6 +32,19 @@ Node3D* Node3D::createSuccessor(const int i) {
   float xSucc;
   float ySucc;
   float tSucc;
+  const float radius = Constants::turningRadiusCells();
+  const float dTheta = Constants::primitiveHeadingChangeRad;
+  const float dx[] = {
+    Constants::primitiveStepLengthCells(),
+    radius * std::sin(dTheta),
+    radius * std::sin(dTheta)
+  };
+  const float dy[] = {
+    0,
+    radius * (std::cos(dTheta) - 1),
+    radius * (1 - std::cos(dTheta))
+  };
+  const float dt[] = {0, dTheta, -dTheta};
 
   // calculate successor positions forward
   if (i < 3) {
@@ -75,18 +67,19 @@ Node3D* Node3D::createSuccessor(const int i) {
 //                                      MOVEMENT COST
 //###################################################
 void Node3D::updateG() {
+  const float stepLength = Constants::primitiveStepLengthCells();
   // forward driving
   if (prim < 3) {
     // penalize turning
     if (pred->prim != prim) {
       // penalize change of direction
       if (pred->prim > 2) {
-        g += dx[0] * Constants::penaltyTurning * Constants::penaltyCOD;
+        g += stepLength * Constants::penaltyTurning * Constants::penaltyCOD;
       } else {
-        g += dx[0] * Constants::penaltyTurning;
+        g += stepLength * Constants::penaltyTurning;
       }
     } else {
-      g += dx[0];
+      g += stepLength;
     }
   }
   // reverse driving
@@ -95,12 +88,12 @@ void Node3D::updateG() {
     if (pred->prim != prim) {
       // penalize change of direction
       if (pred->prim < 3) {
-        g += dx[0] * Constants::penaltyTurning * Constants::penaltyReversing * Constants::penaltyCOD;
+        g += stepLength * Constants::penaltyTurning * Constants::penaltyReversing * Constants::penaltyCOD;
       } else {
-        g += dx[0] * Constants::penaltyTurning * Constants::penaltyReversing;
+        g += stepLength * Constants::penaltyTurning * Constants::penaltyReversing;
       }
     } else {
-      g += dx[0] * Constants::penaltyReversing;
+      g += stepLength * Constants::penaltyReversing;
     }
   }
 }

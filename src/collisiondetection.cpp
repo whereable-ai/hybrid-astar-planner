@@ -4,7 +4,12 @@ using namespace HybridAStar;
 
 CollisionDetection::CollisionDetection() {
   this->grid = nullptr;
-  Lookup::collisionLookup(collisionLookup);
+  initializeLookup();
+}
+
+void CollisionDetection::initializeLookup() {
+  collisionLookup.resize(Constants::collisionLookupSize());
+  Lookup::collisionLookup(collisionLookup.data());
 }
 
 bool CollisionDetection::configurationTest(float x, float y, float t) const {
@@ -16,6 +21,9 @@ bool CollisionDetection::configurationTest(float x, float y, float t) const {
   iY = iY > 0 ? iY : 0;
   int iT = (int)(t / Constants::deltaHeadingRad);
   int idx = iY * Constants::positionResolution * Constants::headings + iX * Constants::headings + iT;
+  if (idx < 0 || static_cast<std::size_t>(idx) >= collisionLookup.size()) {
+    return false;
+  }
   int cX;
   int cY;
 

@@ -1,4 +1,5 @@
 #include "planner.h"
+#include <cmath>
 #include <tf2/utils.h>
 
 using namespace HybridAStar;
@@ -21,14 +22,28 @@ Planner::Planner(rclcpp::Node::SharedPtr n) : n(n), path(n, false), smoothedPath
 
 void Planner::initializeLookups() {
   if (Constants::dubinsLookup) {
-    Lookup::dubinsLookup(dubinsLookup);
+    dubinsLookup.resize(Constants::dubinsLookupSize());
+    Lookup::dubinsLookup(dubinsLookup.data());
   }
-  Lookup::collisionLookup(collisionLookup);
+  collisionLookup.resize(Constants::collisionLookupSize());
+  Lookup::collisionLookup(collisionLookup.data());
+  configurationSpace.initializeLookup();
 }
 
 void Planner::setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
   if (Constants::coutDEBUG) {
     std::cout << "I am seeing the map..." << std::endl;
+  }
+
+  if (std::abs(map->info.resolution - Constants::cellSize) > 1e-6f) {
+    RCLCPP_WARN(
+      n->get_logger(),
+      "Map resolution %.4f differs from planner cell_size %.4f. Using map resolution.",
+      map->info.resolution,
+      Constants::cellSize);
+    Constants::cellSize = map->info.resolution;
+    Constants::updateDerivedConstants();
+    initializeLookups();
   }
 
   grid = map;
@@ -133,6 +148,10 @@ void Planner::plan() {
     int length = width * height * depth;
     Node3D* nodes3D = new Node3D[length]();
     Node2D* nodes2D = new Node2D[width * height]();
+    const auto cleanupNodes = [&]() {
+      delete [] nodes3D;
+      delete [] nodes2D;
+    };
 
     float x = goal.pose.position.x / Constants::cellSize;
     float y = goal.pose.position.y / Constants::cellSize;
@@ -150,36 +169,82 @@ void Planner::plan() {
     t = Helper::normalizeHeadingRad(t);
     Node3D nStart(x, y, t, 0, 0, nullptr);
 
+    if (!configurationSpace.isTraversable(&nStart)) {
+      RCLCPP_WARN(
+        n->get_logger(),
+        "Invalid start: vehicle footprint is in collision at x=%.2f y=%.2f.",
+        nStart.getX(),
+        nStart.getY());
+      cleanupNodes();
+      return;
+    }
+
+    if (!configurationSpace.isTraversable(&nGoal)) {
+      RCLCPP_WARN(
+        n->get_logger(),
+        "Invalid goal: vehicle footprint is in collision at x=%.2f y=%.2f.",
+        nGoal.getX(),
+        nGoal.getY());
+      cleanupNodes();
+      return;
+    }
+
     rclcpp::Time t0 = n->now();
 
     visualization.clear();
     path.clear();
     smoothedPath.clear();
 
-    Node3D* nSolution = Algorithm::hybridAStar(nStart, nGoal, nodes3D, nodes2D, width, height, configurationSpace, dubinsLookup, visualization, n);
+    const rclcpp::Time tSearchStart = n->now();
+    Node3D* nSolution = Algorithm::hybridAStar(
+      nStart,
+      nGoal,
+      nodes3D,
+      nodes2D,
+      width,
+      height,
+      configurationSpace,
+      dubinsLookup.empty() ? nullptr : dubinsLookup.data(),
+      visualization,
+      n);
+    const rclcpp::Time tSearchEnd = n->now();
 
     if (nSolution != nullptr) {
       smoother.tracePath(nSolution);
       path.updatePath(smoother.getPath());
-      smoother.smoothPath(voronoiDiagram);
-      smoothedPath.updatePath(smoother.getPath());
+      const rclcpp::Time tRawPathEnd = n->now();
 
-      rclcpp::Time t1 = n->now();
-      rclcpp::Duration d = t1 - t0;
+      if (Constants::smoothing) {
+        smoother.smoothPath(voronoiDiagram);
+        smoothedPath.updatePath(smoother.getPath());
+      }
+      const rclcpp::Time tSmoothEnd = n->now();
+
+      rclcpp::Duration d = tSmoothEnd - t0;
       std::cout << "TIME in ms: " << d.seconds() * 1000 << std::endl;
+      std::cout << "TIMING in ms search: " << (tSearchEnd - tSearchStart).seconds() * 1000
+                << " raw_path: " << (tRawPathEnd - tSearchEnd).seconds() * 1000
+                << " smooth: " << (tSmoothEnd - tRawPathEnd).seconds() * 1000
+                << " total_compute: " << d.seconds() * 1000
+                << std::endl;
 
       path.publishPath();
       path.publishPathNodes();
       path.publishPathVehicles();
-      smoothedPath.publishPath();
-      smoothedPath.publishPathNodes();
-      smoothedPath.publishPathVehicles();
-      visualization.publishNode3DCosts(nodes3D, width, height, depth);
-      visualization.publishNode2DCosts(nodes2D, width, height);
+      if (Constants::smoothing) {
+        smoothedPath.publishPath();
+        smoothedPath.publishPathNodes();
+        smoothedPath.publishPathVehicles();
+      }
+      if (Constants::publishSearchCosts) {
+        visualization.publishNode3DCosts(nodes3D, width, height, depth);
+        visualization.publishNode2DCosts(nodes2D, width, height);
+      }
+    } else {
+      RCLCPP_WARN(n->get_logger(), "Hybrid A* failed to find a complete path to the goal.");
     }
 
-//    delete [] nodes3D;
-//    delete [] nodes2D;
+    cleanupNodes();
 
   } else {
     std::cout << "missing goal or start" << std::endl;

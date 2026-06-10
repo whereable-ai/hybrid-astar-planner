@@ -14,6 +14,9 @@
 //    Y-COORDINATE => designating the height of the grid
 
 #include <cmath>
+#include <cstddef>
+#include <string>
+#include <vector>
 
 /*!
     \brief The namespace that wraps the entire project
@@ -30,51 +33,63 @@ namespace Constants {
 // CONFIG FLAGS
 
 /// A flag for additional debugging output via `std::cout`
-static const bool coutDEBUG = false;
+extern bool coutDEBUG;
 /// A flag for the mode (true = manual; false = dynamic). Manual for static map or dynamic for dynamic map.
-static const bool manual = true;
+extern bool manual;
 /// A flag for the visualization of 3D nodes (true = on; false = off)
-static const bool visualization = false && manual;
+extern bool visualization;
 /// A flag for the visualization of 2D nodes (true = on; false = off)
-static const bool visualization2D = false && manual;
+extern bool visualization2D;
 /// A flag to toggle reversing (true = on; false = off)
-static const bool reverse = true;
+extern bool reverse;
 /// A flag to toggle the connection of the path via Dubin's shot (true = on; false = off)
-static const bool dubinsShot = true;
+extern bool dubinsShot;
 /// A flag to toggle the Dubin's heuristic, this should be false, if reversing is enabled (true = on; false = off)
-static const bool dubins = false;
+extern bool dubins;
 /*!
    \var static const bool dubinsLookup
    \brief A flag to toggle the Dubin's heuristic via lookup, potentially speeding up the search by a lot
    \todo not yet functional
 */
-static const bool dubinsLookup = false && dubins;
+extern bool dubinsLookup;
 /// A flag to toggle the 2D heuristic (true = on; false = off)
-static const bool twoD = true;
+extern bool twoD;
+/// A flag to toggle path smoothing
+extern bool smoothing;
+/// A flag to publish expensive search cost marker arrays
+extern bool publishSearchCosts;
 
 // _________________
 // GENERAL CONSTANTS
 
 /// [#] --- Limits the maximum search depth of the algorithm, possibly terminating without the solution
-static const int iterations = 30000;
+extern int iterations;
 /// [m] --- Uniformly adds a padding around the vehicle
-static const double bloating = 0;
+extern double bloating;
+/// [m] --- The uninflated width of the vehicle
+extern double vehicleWidth;
+/// [m] --- The uninflated length of the vehicle
+extern double vehicleLength;
 /// [m] --- The width of the vehicle
-static const double width = 1.75 + 2 * bloating;
+extern double width;
 /// [m] --- The length of the vehicle
-static const double length = 2.65 + 2 * bloating;
+extern double length;
 /// [m] --- The minimum turning radius of the vehicle
-static const float r = 6;
+extern float r;
+/// [°] --- Heading change per hybrid A* motion primitive
+extern float primitiveHeadingChangeDeg;
+/// [rad] --- Heading change per hybrid A* motion primitive
+extern float primitiveHeadingChangeRad;
 /// [m] --- The number of discretizations in heading
-static const int headings = 72;
+extern int headings;
 /// [°] --- The discretization value of the heading (goal condition)
-static const float deltaHeadingDeg = 360 / (float)headings;
+extern float deltaHeadingDeg;
 /// [c*M_PI] --- The discretization value of heading (goal condition)
-static const float deltaHeadingRad = 2 * M_PI / (float)headings;
+extern float deltaHeadingRad;
 /// [c*M_PI] --- The heading part of the goal condition
-static const float deltaHeadingNegRad = 2 * M_PI - deltaHeadingRad;
+extern float deltaHeadingNegRad;
 /// [m] --- The cell size of the 2D grid of the world
-static const float cellSize = 1;
+extern float cellSize;
 /*!
   \brief [m] --- The tie breaker breaks ties between nodes expanded in the same cell
 
@@ -83,43 +98,45 @@ static const float cellSize = 1;
   This would lead to the fact that the successor would never be placed and the the one cell could only expand one node. The tieBreaker artificially increases the cost of the predecessor
   to allow the successor being placed in the same cell.
 */
-static const float tieBreaker = 0.01;
+extern float tieBreaker;
 
 // ___________________
 // HEURISTIC CONSTANTS
 
 /// [#] --- A factor to ensure admissibility of the holonomic with obstacles heuristic
-static const float factor2D = sqrt(5) / sqrt(2) + 1;
+extern float factor2D;
 /// [#] --- A movement cost penalty for turning (choosing non straight motion primitives)
-static const float penaltyTurning = 1.05;
+extern float penaltyTurning;
 /// [#] --- A movement cost penalty for reversing (choosing motion primitives > 2)
-static const float penaltyReversing = 2.0;
+extern float penaltyReversing;
 /// [#] --- A movement cost penalty for change of direction (changing from primitives < 3 to primitives > 2)
-static const float penaltyCOD = 2.0;
+extern float penaltyCOD;
 /// [m] --- The distance to the goal when the analytical solution (Dubin's shot) first triggers
-static const float dubinsShotDistance = 100;
+extern float dubinsShotDistance;
 /// [m] --- The step size for the analytical solution (Dubin's shot) primarily relevant for collision checking
-static const float dubinsStepSize = 1;
+extern float dubinsStepSize;
+/// [#] --- Maximum number of smoothing iterations
+extern int smootherIterations;
 
 
 // ______________________
 // DUBINS LOOKUP SPECIFIC
 
 /// [m] --- The width of the dubinsArea / 2 for the analytical solution (Dubin's shot)
-static const int dubinsWidth = 15;
+extern int dubinsWidth;
 /// [m] --- The area of the lookup for the analytical solution (Dubin's shot)
-static const int dubinsArea = dubinsWidth * dubinsWidth;
+extern int dubinsArea;
 
 
 // _________________________
 // COLLISION LOOKUP SPECIFIC
 
 /// [m] -- The bounding box size length and width to precompute all possible headings
-static const int bbSize = std::ceil((sqrt(width * width + length* length) + 4) / cellSize);
+extern int bbSize;
 /// [#] --- The sqrt of the number of discrete positions per cell
-static const int positionResolution = 10;
+extern int positionResolution;
 /// [#] --- The number of discrete positions per cell
-static const int positions = positionResolution * positionResolution;
+extern int positions;
 /// A structure describing the relative position of the occupied cell based on the center of the vehicle
 struct relPos {
   /// the x position relative to the center
@@ -132,17 +149,15 @@ struct config {
   /// the number of cells occupied by this configuration of the vehicle
   int length;
   /*!
-     \var relPos pos[64]
-     \brief The maximum number of occupied cells
-     \todo needs to be dynamic
+     \brief The occupied cells for this configuration
   */
-  relPos pos[64];
+  std::vector<relPos> pos;
 };
 
 // _________________
 // SMOOTHER SPECIFIC
 /// [m] --- The minimum width of a safe road for the vehicle at hand
-static const float minRoadWidth = 2;
+extern float minRoadWidth;
 
 // ____________________________________________
 // COLOR DEFINITIONS FOR VISUALIZATION PURPOSES
@@ -165,8 +180,17 @@ static constexpr color orange = {253.f / 255.f, 151.f / 255.f, 31.f / 255.f};
 static constexpr color pink = {249.f / 255.f, 38.f / 255.f, 114.f / 255.f};
 /// A definition for a color used for visualization
 static constexpr color purple = {174.f / 255.f, 129.f / 255.f, 255.f / 255.f};
+
+bool loadFromYaml(const std::string& yaml_file, std::string* error = nullptr);
+void updateDerivedConstants();
+std::size_t collisionLookupSize();
+std::size_t dubinsLookupSize();
+float metersToCells(float meters);
+float turningRadiusCells();
+float dubinsShotDistanceCells();
+float dubinsStepSizeCells();
+float primitiveStepLengthCells();
 }
 }
 
 #endif // CONSTANTS
-

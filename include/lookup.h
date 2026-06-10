@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <iostream>
+#include <vector>
 #ifndef COLLISIONLOOKUP
 #define COLLISIONLOOKUP
 
@@ -47,7 +49,7 @@ inline void dubinsLookup(float* lookup) {
           goal[2] = Constants::deltaHeadingRad * h1;
 
           // calculate the actual cost
-          dubins_init(start, goal, Constants::r, &path);
+          dubins_init(start, goal, Constants::turningRadiusCells(), &path);
           lookup[X * headings * headings * width + Y * headings * headings + h0 * headings + h1] = dubins_path_length(&path);
 
           if (DEBUG && lookup[X * headings * headings * width + Y * headings * headings + h0 * headings + h1] < sqrt(X * X + Y * Y) * 1.000001) {
@@ -122,7 +124,7 @@ inline void collisionLookup(Constants::config* lookup) {
   int stepX;
   int stepY;
   // grid
-  bool cSpace[size * size];
+  std::vector<bool> cSpace(size * size, false);
   bool inside = false;
   int hcross1 = 0;
   int hcross2 = 0;
@@ -132,7 +134,7 @@ inline void collisionLookup(Constants::config* lookup) {
   int count = 0;
   const int positionResolution = Constants::positionResolution;
   const int positions = Constants::positions;
-  point points[positions];
+  std::vector<point> points(positions);
 
   // generate all discrete positions within one cell
   for (int i = 0; i < positionResolution; ++i) {
@@ -255,7 +257,9 @@ inline void collisionLookup(Constants::config* lookup) {
             }
           } else {
             // this SHOULD NOT happen
-            std::cout << "\n--->tie occured, please check for error in script\n";
+            if (DEBUG) {
+              std::cout << "\n--->tie occured, please check for error in script\n";
+            }
             break;
           }
         }
@@ -289,20 +293,20 @@ inline void collisionLookup(Constants::config* lookup) {
 
       // GENERATE THE ACTUAL LOOKUP
       count = 0;
+      auto& entry = lookup[q * Constants::headings + o];
+      entry.pos.clear();
 
       for (int i = 0; i < size; ++i) {
         for (int j = 0; j < size; ++j) {
           if (cSpace[i * size + j]) {
-            // compute the relative position of the car cells
-            lookup[q * Constants::headings + o].pos[count].x = j - (int)c.x;
-            lookup[q * Constants::headings + o].pos[count].y = i - (int)c.y;
+            entry.pos.push_back({j - (int)c.x, i - (int)c.y});
             // add one for the length of the current list
             count++;
           }
         }
       }
 
-      lookup[q * Constants::headings + o].length = count;
+      entry.length = count;
 
       if (DEBUG) {
         //DEBUG
@@ -334,4 +338,3 @@ inline void collisionLookup(Constants::config* lookup) {
 }
 }
 #endif // LOOKUP
-

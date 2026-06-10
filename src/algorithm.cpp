@@ -1,6 +1,8 @@
 #include "algorithm.h"
 
+#include <algorithm>
 #include <boost/heap/binomial_heap.hpp>
+#include <cmath>
 
 using namespace HybridAStar;
 
@@ -63,8 +65,23 @@ Node3D* Algorithm::hybridAStar(Node3D& start,
       nodes3D[iPred].close();
       O.pop();
 
-      if (*nPred == goal || iterations > Constants::iterations) {
+      if (*nPred == goal) {
         return nPred;
+      }
+      if (iterations > Constants::iterations) {
+        RCLCPP_WARN(
+          n->get_logger(),
+          "Hybrid A* stopped after %d iterations before reaching the goal. "
+          "Current=(%.2f, %.2f, %.1f deg), goal=(%.2f, %.2f, %.1f deg), distance=%.2f cells.",
+          iterations,
+          nPred->getX(),
+          nPred->getY(),
+          Helper::toDeg(nPred->getT()),
+          goal.getX(),
+          goal.getY(),
+          Helper::toDeg(goal.getT()),
+          std::hypot(nPred->getX() - goal.getX(), nPred->getY() - goal.getY()));
+        return nullptr;
       }
       else {
         if (Constants::dubinsShot && nPred->isInRange(goal) && nPred->getPrim() < 3) {
@@ -191,7 +208,7 @@ void updateH(Node3D& start, const Node3D& goal, Node2D* nodes2D, float* dubinsLo
   float twoDoffset = 0;
 
   if (Constants::dubins) {
-    ompl::base::DubinsStateSpace dubinsPath(Constants::r);
+    ompl::base::DubinsStateSpace dubinsPath(Constants::turningRadiusCells());
     State* dbStart = (State*)dubinsPath.allocState();
     State* dbEnd = (State*)dubinsPath.allocState();
     dbStart->setXY(start.getX(), start.getY());
@@ -204,7 +221,7 @@ void updateH(Node3D& start, const Node3D& goal, Node2D* nodes2D, float* dubinsLo
   }
 
   if (Constants::reverse && !Constants::dubins) {
-    ompl::base::ReedsSheppStateSpace reedsSheppPath(Constants::r);
+    ompl::base::ReedsSheppStateSpace reedsSheppPath(Constants::turningRadiusCells());
     State* rsStart = (State*)reedsSheppPath.allocState();
     State* rsEnd = (State*)reedsSheppPath.allocState();
     rsStart->setXY(start.getX(), start.getY());
@@ -235,18 +252,17 @@ Node3D* dubinsShot(Node3D& start, const Node3D& goal, CollisionDetection& config
   double q0[] = { start.getX(), start.getY(), start.getT() };
   double q1[] = { goal.getX(), goal.getY(), goal.getT() };
   DubinsPath path;
-  dubins_init(q0, q1, Constants::r, &path);
+  dubins_init(q0, q1, Constants::turningRadiusCells(), &path);
 
-  int i = 0;
-  float x = 0.f;
   float length = dubins_path_length(&path);
+  const float stepSize = Constants::dubinsStepSizeCells();
+  const int samples = std::max(1, static_cast<int>(std::ceil(length / stepSize)));
+  Node3D* dubinsNodes = new Node3D[samples];
 
-  Node3D* dubinsNodes = new Node3D [(int)(length / Constants::dubinsStepSize) + 1];
-
-  x += Constants::dubinsStepSize;
-  while (x <  length) {
+  for (int i = 0; i < samples; ++i) {
     double q[3];
-    dubins_path_sample(&path, x, q);
+    const float sample = std::min(length, (i + 1) * stepSize);
+    dubins_path_sample(&path, sample, q);
     dubinsNodes[i].setX(q[0]);
     dubinsNodes[i].setY(q[1]);
     dubinsNodes[i].setT(Helper::normalizeHeadingRad(q[2]));
@@ -257,13 +273,10 @@ Node3D* dubinsShot(Node3D& start, const Node3D& goal, CollisionDetection& config
       } else {
         dubinsNodes[i].setPred(&start);
       }
-
-      x += Constants::dubinsStepSize;
-      i++;
     } else {
       delete [] dubinsNodes;
       return nullptr;
     }
   }
-  return &dubinsNodes[i - 1];
+  return &dubinsNodes[samples - 1];
 }

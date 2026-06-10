@@ -6,7 +6,9 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Path2
         - /Vehicle_Path1
+        - /Vehicle_Path1/Topic1
         - /MarkerArray2
       Splitter Ratio: 0.5
     Tree Height: 840
@@ -166,13 +168,13 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz_default_plugins/Path
-      Color: 25; 255; 0
+      Color: 0; 0; 0
       Enabled: true
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
+      Line Style: Billboards
+      Line Width: 0.30000001192092896
       Name: Path
       Offset:
         X: 0
@@ -189,7 +191,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /sPath
+        Value: /path
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
@@ -204,17 +206,17 @@ Visualization Manager:
         Value: /pathVehicle
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
+      Enabled: false
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /pathNodes
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 1
@@ -277,11 +279,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 4.8451738357543945
+      Scale: 25.48372459411621
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 109.19610595703125
-      Y: 223.5501251220703
+      X: 28.479351043701172
+      Y: 35.3685188293457
     Saved: ~
 Window Geometry:
   Displays:
@@ -299,5 +301,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1882
-  X: 376
-  Y: 2266
+  X: 312
+  Y: 2202

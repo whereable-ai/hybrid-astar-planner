@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <ctime>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_ros/transform_listener.h>
@@ -27,9 +28,6 @@ namespace HybridAStar {
 class Planner {
  public:
   Planner(rclcpp::Node::SharedPtr n);
-  ~Planner() {
-    delete[] dubinsLookup;
-  }
 
   void initializeLookups();
   void setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map);
@@ -60,8 +58,8 @@ class Planner {
   bool validStart = false;
   bool validGoal = false;
 
-  Constants::config collisionLookup[Constants::headings * Constants::positions];
-  float* dubinsLookup = new float [Constants::headings * Constants::headings * Constants::dubinsWidth * Constants::dubinsWidth];
+  std::vector<Constants::config> collisionLookup;
+  std::vector<float> dubinsLookup;
 };
 }
 #endif // PLANNER_H
