@@ -15,6 +15,7 @@ Planner::Planner(rclcpp::Node::SharedPtr n) : n(n), path(n, false), smoothedPath
 
   subGoal = n->create_subscription<geometry_msgs::msg::PoseStamped>("/move_base_simple/goal", 1, std::bind(&Planner::setGoal, this, std::placeholders::_1));
   subStart = n->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 1, std::bind(&Planner::setStart, this, std::placeholders::_1));
+  subLocalPose = n->create_subscription<geometry_msgs::msg::PoseStamped>("/localization/local_pose", 1, std::bind(&Planner::setLocalPose, this, std::placeholders::_1));
 
   tfBuffer = std::make_shared<tf2_ros::Buffer>(n->get_clock());
   listener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer, n, false);
@@ -93,29 +94,88 @@ void Planner::setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
 }
 
 void Planner::setStart(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr initial) {
-  float x = initial->pose.pose.position.x / Constants::cellSize;
-  float y = initial->pose.pose.position.y / Constants::cellSize;
+  geometry_msgs::msg::PoseStamped pose;
+  pose.header = initial->header;
+  pose.pose = initial->pose.pose;
+  if (pose.header.frame_id.empty()) {
+    pose.header.frame_id = "map";
+  }
+
+  geometry_msgs::msg::PoseStamped mapPose;
+  if (transformToMap(pose, mapPose, "initialpose")) {
+    updateStartPose(mapPose, "initialpose");
+  }
+}
+
+bool Planner::transformToMap(
+    const geometry_msgs::msg::PoseStamped& input,
+    geometry_msgs::msg::PoseStamped& output,
+    const char* source) {
+  output = input;
+  if (!output.header.frame_id.empty() && output.header.frame_id.front() == '/') {
+    output.header.frame_id.erase(0, 1);
+  }
+
+  if (output.header.frame_id.empty() || output.header.frame_id == "map") {
+    output.header.frame_id = "map";
+    output.header.stamp = n->now();
+    return true;
+  }
+
+  try {
+    const auto transform = tfBuffer->lookupTransform("map", output.header.frame_id, tf2::TimePointZero);
+    tf2::doTransform(input, output, transform);
+    output.header.frame_id = "map";
+    output.header.stamp = n->now();
+    return true;
+  } catch (const tf2::TransformException& ex) {
+    RCLCPP_WARN_THROTTLE(
+      n->get_logger(),
+      *n->get_clock(),
+      2000,
+      "Ignoring %s start pose in frame '%s': could not transform to map: %s",
+      source,
+      input.header.frame_id.c_str(),
+      ex.what());
+    return false;
+  }
+}
+
+void Planner::updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source) {
+  float x = pose.pose.position.x / Constants::cellSize;
+  float y = pose.pose.position.y / Constants::cellSize;
   tf2::Quaternion q;
-  tf2::fromMsg(initial->pose.pose.orientation, q);
+  tf2::fromMsg(pose.pose.orientation, q);
   float t = tf2::getYaw(q);
 
+  start.header = pose.header;
+  start.pose.pose = pose.pose;
+
   geometry_msgs::msg::PoseStamped startN;
-  startN.pose.position = initial->pose.pose.position;
-  startN.pose.orientation = initial->pose.pose.orientation;
   startN.header.frame_id = "map";
   startN.header.stamp = n->now();
-
-  std::cout << "I am seeing a new start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+  startN.pose = pose.pose;
+  pubStart->publish(startN);
 
   if (grid && grid->info.height >= y && y >= 0 && grid->info.width >= x && x >= 0) {
     validStart = true;
-    start = *initial;
-
-    if (Constants::manual) { plan();}
-
-    pubStart->publish(startN);
   } else {
-    std::cout << "invalid start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+    validStart = false;
+    if (Constants::coutDEBUG) {
+      std::cout << "invalid " << source << " start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+    }
+    return;
+  }
+
+  if (source == std::string("initialpose")) {
+    std::cout << "I am seeing a new start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+  }
+}
+
+void Planner::setLocalPose(const geometry_msgs::msg::PoseStamped::SharedPtr local) {
+  geometry_msgs::msg::PoseStamped mapPose;
+  if (transformToMap(*local, mapPose, "local_pose")) {
+    updateStartPose(mapPose, "local_pose");
   }
 }
 

@@ -32,15 +32,20 @@ class Planner {
   void initializeLookups();
   void setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map);
   void setStart(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr start);
+  void setLocalPose(const geometry_msgs::msg::PoseStamped::SharedPtr pose);
   void setGoal(const geometry_msgs::msg::PoseStamped::SharedPtr goal);
   void plan();
 
  private:
+  bool transformToMap(const geometry_msgs::msg::PoseStamped& input, geometry_msgs::msg::PoseStamped& output, const char* source);
+  void updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source);
+
   rclcpp::Node::SharedPtr n;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pubStart;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr subMap;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subGoal;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr subStart;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subLocalPose;
   std::shared_ptr<tf2_ros::Buffer> tfBuffer;
   std::shared_ptr<tf2_ros::TransformListener> listener;
   geometry_msgs::msg::TransformStamped transform;
