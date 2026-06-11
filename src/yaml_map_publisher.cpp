@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -192,7 +193,48 @@ int getInt(
   return std::stoi(it->second);
 }
 
-nav_msgs::msg::OccupancyGrid loadYamlMap(const std::string& yaml_file) {
+std::vector<std::int8_t> downsampleOccupancy(
+    const std::vector<std::int8_t>& source,
+    const int width,
+    const int height,
+    const int scale,
+    std::uint32_t* scaled_width,
+    std::uint32_t* scaled_height) {
+  *scaled_width = static_cast<std::uint32_t>((width + scale - 1) / scale);
+  *scaled_height = static_cast<std::uint32_t>((height + scale - 1) / scale);
+
+  std::vector<std::int8_t> scaled(static_cast<std::size_t>(*scaled_width * *scaled_height), 0);
+  for (std::uint32_t y = 0; y < *scaled_height; ++y) {
+    for (std::uint32_t x = 0; x < *scaled_width; ++x) {
+      bool has_occupied = false;
+      bool has_unknown = false;
+
+      const int y_begin = static_cast<int>(y) * scale;
+      const int y_end = std::min(y_begin + scale, height);
+      const int x_begin = static_cast<int>(x) * scale;
+      const int x_end = std::min(x_begin + scale, width);
+
+      for (int source_y = y_begin; source_y < y_end; ++source_y) {
+        for (int source_x = x_begin; source_x < x_end; ++source_x) {
+          const auto value = source[static_cast<std::size_t>(source_y * width + source_x)];
+          has_occupied = has_occupied || value == 100;
+          has_unknown = has_unknown || value < 0;
+        }
+      }
+
+      const auto index = static_cast<std::size_t>(y * *scaled_width + x);
+      scaled[index] = has_occupied ? 100 : (has_unknown ? -1 : 0);
+    }
+  }
+
+  return scaled;
+}
+
+nav_msgs::msg::OccupancyGrid loadYamlMap(const std::string& yaml_file, const int resolution_scale) {
+  if (resolution_scale < 1) {
+    throw std::runtime_error("resolution_scale must be >= 1");
+  }
+
   auto fields = loadYamlFields(yaml_file);
   const auto image_name = getRequired<std::string>(fields, "image");
   const auto map_stem = resolveMapStem(yaml_file, image_name);
@@ -227,15 +269,13 @@ nav_msgs::msg::OccupancyGrid loadYamlMap(const std::string& yaml_file) {
 
   nav_msgs::msg::OccupancyGrid map;
   map.header.frame_id = "map";
-  map.info.resolution = static_cast<float>(resolution);
-  map.info.width = static_cast<std::uint32_t>(gray.cols);
-  map.info.height = static_cast<std::uint32_t>(gray.rows);
   map.info.origin.position.x = origin[0];
   map.info.origin.position.y = origin[1];
   map.info.origin.position.z = 0.0;
   map.info.origin.orientation.z = std::sin(origin[2] * 0.5);
   map.info.origin.orientation.w = std::cos(origin[2] * 0.5);
-  map.data.resize(static_cast<std::size_t>(gray.cols * gray.rows));
+
+  std::vector<std::int8_t> source_data(static_cast<std::size_t>(gray.cols * gray.rows));
 
   for (int y = 0; y < gray.rows; ++y) {
     for (int x = 0; x < gray.cols; ++x) {
@@ -245,13 +285,29 @@ nav_msgs::msg::OccupancyGrid loadYamlMap(const std::string& yaml_file) {
       const auto index = static_cast<std::size_t>(y * gray.cols + x);
 
       if (occupancy >= occupied_thresh) {
-        map.data[index] = 100;
+        source_data[index] = 100;
       } else if (occupancy <= free_thresh) {
-        map.data[index] = 0;
+        source_data[index] = 0;
       } else {
-        map.data[index] = -1;
+        source_data[index] = -1;
       }
     }
+  }
+
+  if (resolution_scale == 1) {
+    map.info.resolution = static_cast<float>(resolution);
+    map.info.width = static_cast<std::uint32_t>(gray.cols);
+    map.info.height = static_cast<std::uint32_t>(gray.rows);
+    map.data = std::move(source_data);
+  } else {
+    map.info.resolution = static_cast<float>(resolution * resolution_scale);
+    map.data = downsampleOccupancy(
+        source_data,
+        gray.cols,
+        gray.rows,
+        resolution_scale,
+        &map.info.width,
+        &map.info.height);
   }
 
   return map;
@@ -263,15 +319,31 @@ class YamlMapPublisher : public rclcpp::Node {
  public:
   YamlMapPublisher() : Node("yaml_map_publisher") {
     declare_parameter<std::string>("yaml_file", "");
+    declare_parameter<std::string>("config_file", "");
     declare_parameter<std::string>("topic", "/map");
+    declare_parameter<int>("resolution_scale", 0);
 
     const auto yaml_file = get_parameter("yaml_file").as_string();
+    const auto config_file = get_parameter("config_file").as_string();
     const auto topic = get_parameter("topic").as_string();
+    const auto resolution_scale_param = get_parameter("resolution_scale").as_int();
     if (yaml_file.empty()) {
       throw std::runtime_error("yaml_file parameter is required");
     }
 
-    map_ = loadYamlMap(yaml_file);
+    int resolution_scale = 1;
+    if (!config_file.empty()) {
+      const auto config_fields = loadYamlFields(config_file);
+      resolution_scale = getInt(
+          config_fields,
+          "map_resolution_scale",
+          getInt(config_fields, "resolution_scale", resolution_scale));
+    }
+    if (resolution_scale_param > 0) {
+      resolution_scale = resolution_scale_param;
+    }
+
+    map_ = loadYamlMap(yaml_file, resolution_scale);
 
     auto qos = rclcpp::QoS(1).transient_local().reliable();
     publisher_ = create_publisher<nav_msgs::msg::OccupancyGrid>(topic, qos);
@@ -283,9 +355,10 @@ class YamlMapPublisher : public rclcpp::Node {
 
     RCLCPP_INFO(
         get_logger(),
-        "Publishing static %ux%u map on %s",
+        "Publishing static %ux%u map at %.3f m/cell on %s",
         map_.info.width,
         map_.info.height,
+        map_.info.resolution,
         topic.c_str());
   }
 

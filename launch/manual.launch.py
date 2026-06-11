@@ -32,6 +32,7 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'yaml_file': map_yaml_file,
+                'config_file': planner_config_file,
                 'topic': '/map',
             }]
         ),

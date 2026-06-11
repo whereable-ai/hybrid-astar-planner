@@ -3,6 +3,7 @@
 
 cout_debug: false
 manual: true
+map_resolution_scale: 4
 visualization: false
 visualization_2d: false
 reverse: true
