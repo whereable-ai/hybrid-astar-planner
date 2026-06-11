@@ -47,7 +47,7 @@ Node3D* Algorithm::hybridAStar(Node3D& start,
   Node3D* nPred;
   Node3D* nSucc;
 
-  while (!O.empty()) {
+  while (!O.empty() && rclcpp::ok()) {
     nPred = O.top();
     iPred = nPred->setIdx(width, height);
     iterations++;
@@ -155,7 +155,7 @@ float aStar(Node2D& start,
   Node2D* nPred;
   Node2D* nSucc;
 
-  while (!O.empty()) {
+  while (!O.empty() && rclcpp::ok()) {
     nPred = O.top();
     iPred = nPred->setIdx(width);
 

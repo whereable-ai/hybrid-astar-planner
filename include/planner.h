@@ -41,6 +41,7 @@ class Planner {
   bool transformToMap(const geometry_msgs::msg::PoseStamped& input, geometry_msgs::msg::PoseStamped& output, const char* source);
   bool isOnGrid(const GridPose& pose) const;
   void updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source);
+  void publishStartPose();
 
   rclcpp::Node::SharedPtr n;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pubStart;
@@ -48,6 +49,7 @@ class Planner {
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subGoal;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr subStart;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr subLocalPose;
+  rclcpp::TimerBase::SharedPtr startPublishTimer;
   std::shared_ptr<tf2_ros::Buffer> tfBuffer;
   std::shared_ptr<tf2_ros::TransformListener> listener;
   geometry_msgs::msg::TransformStamped transform;
@@ -62,8 +64,10 @@ class Planner {
   nav_msgs::msg::OccupancyGrid::SharedPtr grid;
   GridTransform mapTransform;
   geometry_msgs::msg::PoseWithCovarianceStamped start;
+  geometry_msgs::msg::PoseStamped latestStartPose;
   geometry_msgs::msg::PoseStamped goal;
   bool validStart = false;
+  bool hasLatestStartPose = false;
   bool validGoal = false;
 
   std::vector<Constants::config> collisionLookup;

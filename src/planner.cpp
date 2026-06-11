@@ -1,4 +1,5 @@
 #include "planner.h"
+#include <chrono>
 #include <cmath>
 #include <tf2/utils.h>
 
@@ -7,15 +8,22 @@ using namespace HybridAStar;
 Planner::Planner(rclcpp::Node::SharedPtr n) : n(n), path(n, false), smoothedPath(n, true), visualization(n) {
   pubStart = n->create_publisher<geometry_msgs::msg::PoseStamped>("/move_base_simple/start", 1);
 
+  auto mapQos = rclcpp::QoS(1).transient_local().reliable();
   if (Constants::manual) {
-    subMap = n->create_subscription<nav_msgs::msg::OccupancyGrid>("/map", 1, std::bind(&Planner::setMap, this, std::placeholders::_1));
+    subMap = n->create_subscription<nav_msgs::msg::OccupancyGrid>("/map", mapQos, std::bind(&Planner::setMap, this, std::placeholders::_1));
   } else {
-    subMap = n->create_subscription<nav_msgs::msg::OccupancyGrid>("/occ_map", 1, std::bind(&Planner::setMap, this, std::placeholders::_1));
+    subMap = n->create_subscription<nav_msgs::msg::OccupancyGrid>("/occ_map", mapQos, std::bind(&Planner::setMap, this, std::placeholders::_1));
   }
 
   subGoal = n->create_subscription<geometry_msgs::msg::PoseStamped>("/move_base_simple/goal", 1, std::bind(&Planner::setGoal, this, std::placeholders::_1));
   subStart = n->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 1, std::bind(&Planner::setStart, this, std::placeholders::_1));
-  subLocalPose = n->create_subscription<geometry_msgs::msg::PoseStamped>("/localization/local_pose", 1, std::bind(&Planner::setLocalPose, this, std::placeholders::_1));
+  subLocalPose = n->create_subscription<geometry_msgs::msg::PoseStamped>(
+    "/localization/local_pose",
+    rclcpp::SensorDataQoS(),
+    std::bind(&Planner::setLocalPose, this, std::placeholders::_1));
+  startPublishTimer = n->create_wall_timer(
+    std::chrono::milliseconds(50),
+    std::bind(&Planner::publishStartPose, this));
 
   tfBuffer = std::make_shared<tf2_ros::Buffer>(n->get_clock());
   listener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer, n, false);
@@ -56,25 +64,33 @@ void Planner::setMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map) {
 
   int height = map->info.height;
   int width = map->info.width;
-  bool** binMap;
-  binMap = new bool*[width];
 
-  for (int x = 0; x < width; x++) { binMap[x] = new bool[height]; }
+  if (Constants::smoothing) {
+    bool** binMap;
+    binMap = new bool*[width];
 
-  for (int x = 0; x < width; ++x) {
-    for (int y = 0; y < height; ++y) {
-      binMap[x][y] = map->data[y * width + x] ? true : false;
+    for (int x = 0; x < width; x++) { binMap[x] = new bool[height]; }
+
+    for (int x = 0; x < width; ++x) {
+      if (!rclcpp::ok()) {
+        for (int i = 0; i < width; i++) {
+          delete[] binMap[i];
+        }
+        delete[] binMap;
+        return;
+      }
+      for (int y = 0; y < height; ++y) {
+        binMap[x][y] = map->data[y * width + x] ? true : false;
+      }
     }
-  }
 
-  voronoiDiagram.initializeMap(width, height, binMap);
-  voronoiDiagram.update();
-  voronoiDiagram.visualize();
-  for (int x = 0; x < width; x++) {
-    delete[] binMap[x];
+    voronoiDiagram.initializeMap(width, height, binMap);
+    voronoiDiagram.update();
+    for (int x = 0; x < width; x++) {
+      delete[] binMap[x];
+    }
+    delete[] binMap;
   }
-  delete[] binMap;
-//  delete[] binMap;
 
   if (!Constants::manual && tfBuffer->canTransform("map", "base_link", tf2::TimePointZero)) {
     try {
@@ -151,28 +167,48 @@ bool Planner::isOnGrid(const GridPose& pose) const {
 }
 
 void Planner::updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const char* source) {
-  start.header = pose.header;
-  start.pose.pose = pose.pose;
-
-  geometry_msgs::msg::PoseStamped startN;
-  startN.header.frame_id = "map";
-  startN.header.stamp = n->now();
-  startN.pose = pose.pose;
-  pubStart->publish(startN);
+  if (!grid) {
+    validStart = false;
+    RCLCPP_WARN_THROTTLE(
+      n->get_logger(),
+      *n->get_clock(),
+      1000,
+      "Waiting for map before validating %s start: map=(%.2f, %.2f, %.1f deg)",
+      source,
+      pose.pose.position.x,
+      pose.pose.position.y,
+      Helper::toDeg(tf2::getYaw(pose.pose.orientation)));
+    return;
+  }
 
   const GridPose gridPose = mapTransform.toGrid(pose.pose);
   if (isOnGrid(gridPose)) {
     validStart = true;
   } else {
     validStart = false;
-    if (Constants::coutDEBUG) {
-      std::cout << "invalid " << source << " start x:" << gridPose.x
-                << " y:" << gridPose.y
-                << " t:" << Helper::toDeg(gridPose.t)
-                << std::endl;
-    }
+    RCLCPP_WARN_THROTTLE(
+      n->get_logger(),
+      *n->get_clock(),
+      1000,
+      "Ignoring %s start outside map: map=(%.2f, %.2f, %.1f deg), grid=(%.2f, %.2f, %.1f deg)",
+      source,
+      pose.pose.position.x,
+      pose.pose.position.y,
+      Helper::toDeg(tf2::getYaw(pose.pose.orientation)),
+      gridPose.x,
+      gridPose.y,
+      Helper::toDeg(gridPose.t));
     return;
   }
+
+  start.header = pose.header;
+  start.pose.pose = pose.pose;
+
+  latestStartPose.header.frame_id = "map";
+  latestStartPose.header.stamp = n->now();
+  latestStartPose.pose = pose.pose;
+  hasLatestStartPose = true;
+  publishStartPose();
 
   if (source == std::string("initialpose")) {
     std::cout << "I am seeing a new start x:" << gridPose.x
@@ -180,6 +216,15 @@ void Planner::updateStartPose(const geometry_msgs::msg::PoseStamped& pose, const
               << " t:" << Helper::toDeg(gridPose.t)
               << std::endl;
   }
+}
+
+void Planner::publishStartPose() {
+  if (!hasLatestStartPose) {
+    return;
+  }
+
+  latestStartPose.header.stamp = n->now();
+  pubStart->publish(latestStartPose);
 }
 
 void Planner::setLocalPose(const geometry_msgs::msg::PoseStamped::SharedPtr local) {

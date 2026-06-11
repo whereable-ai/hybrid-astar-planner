@@ -275,14 +275,15 @@ class YamlMapPublisher : public rclcpp::Node {
 
     auto qos = rclcpp::QoS(1).transient_local().reliable();
     publisher_ = create_publisher<nav_msgs::msg::OccupancyGrid>(topic, qos);
-    timer_ = create_wall_timer(std::chrono::milliseconds(500), [this]() {
+    timer_ = create_wall_timer(std::chrono::milliseconds(100), [this]() {
       map_.header.stamp = now();
       publisher_->publish(map_);
+      timer_->cancel();
     });
 
     RCLCPP_INFO(
         get_logger(),
-        "Publishing %ux%u map on %s",
+        "Publishing static %ux%u map on %s",
         map_.info.width,
         map_.info.height,
         topic.c_str());
