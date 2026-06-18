@@ -61,7 +61,7 @@ set(HEADERS
 )
 
 include_directories(
-    /usr/include/ompl-1.5
+    ${OMPL_INCLUDE_DIRS}
     include
 )
 
