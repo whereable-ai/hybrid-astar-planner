@@ -15,7 +15,7 @@ Planner::Planner(rclcpp::Node::SharedPtr n) : n(n), path(n, false), smoothedPath
     subMap = n->create_subscription<nav_msgs::msg::OccupancyGrid>("/occ_map", mapQos, std::bind(&Planner::setMap, this, std::placeholders::_1));
   }
 
-  subGoal = n->create_subscription<geometry_msgs::msg::PoseStamped>("/move_base_simple/goal", 1, std::bind(&Planner::setGoal, this, std::placeholders::_1));
+  subGoal = n->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 1, std::bind(&Planner::setGoal, this, std::placeholders::_1));
   subStart = n->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 1, std::bind(&Planner::setStart, this, std::placeholders::_1));
   subLocalPose = n->create_subscription<geometry_msgs::msg::PoseStamped>(
     "/localization/local_pose",
