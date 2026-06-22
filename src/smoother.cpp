@@ -1,5 +1,7 @@
 #include "smoother.h"
 
+#include <algorithm>
+
 using namespace HybridAStar;
 
 inline bool isCusp(const std::vector<Node3D>& path, int i) {
@@ -65,6 +67,10 @@ void Smoother::smoothPath(DynamicVoronoi& voronoi_ref) {
 
 void Smoother::tracePath(const Node3D* node, int i, std::vector<Node3D> path) {
   if (node == nullptr) {
+    // The predecessor chain is traversed from the solution node (goal) back
+    // to the root node (vehicle start). Expose paths in driving order so both
+    // raw and smoothed nav_msgs/Path messages run from the vehicle to the goal.
+    std::reverse(path.begin(), path.end());
     this->path = path;
     return;
   }
